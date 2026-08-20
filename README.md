@@ -64,6 +64,11 @@ if not result.trustworthy:
 
 ## Input
 
+Anything with a trade log. Verified end to end against genuine
+[backtrader](https://github.com/mementum/backtrader) output — its own column
+names, no reshaping — and that export is committed as a regression fixture so
+the claim can't quietly rot.
+
 Anything with a trade log. JSON (`{"trades": [...]}` or a bare list) or CSV.
 Column names are matched loosely, so `Fill Price`, `fill_price` and `avg.price`
 all work, as do `BUY`/`long`/`1` for sides. The minimum is symbol, side,
