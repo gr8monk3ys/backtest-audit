@@ -1,0 +1,45 @@
+[project]
+name = "backtest-audit"
+version = "0.1.0"
+description = "Find the defects that silently inflate a backtest — before you trade it."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "gr8monk3ys" }]
+keywords = ["backtest", "quant", "trading", "validation", "overfitting", "audit"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Financial and Insurance Industry",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3.10",
+  "Topic :: Office/Business :: Financial :: Investment",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.scripts]
+btaudit = "backtest_audit.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/gr8monk3ys/backtest-audit"
+Issues = "https://github.com/gr8monk3ys/backtest-audit/issues"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["backtest_audit*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "C4", "UP"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
