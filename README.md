@@ -40,6 +40,19 @@ btaudit results.json --json          # machine-readable, for CI
 btaudit results.json --strict        # warnings fail too
 ```
 
+### In CI
+
+```yaml
+- uses: gr8monk3ys/backtest-audit@v1
+  with:
+    path: results/backtest.json
+    strict: true          # optional: warnings fail too
+    html: audit.html      # optional: report to upload as an artifact
+```
+
+The run summary gets the full report, and the build fails on anything
+blocking.
+
 ```python
 from backtest_audit import audit_file
 

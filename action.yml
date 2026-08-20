@@ -1,0 +1,63 @@
+name: "Backtest Audit"
+description: "Fail the build when a backtest result shows defects that inflate it."
+branding:
+  icon: "alert-triangle"
+  color: "red"
+
+inputs:
+  path:
+    description: "Backtest result to audit (.json or .csv trade log)."
+    required: true
+  strict:
+    description: "Fail on warnings as well as blocking findings."
+    required: false
+    default: "false"
+  html:
+    description: "Optional path to write an HTML report to."
+    required: false
+    default: ""
+  python-version:
+    description: "Python used to run the audit."
+    required: false
+    default: "3.12"
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install backtest-audit
+      shell: bash
+      run: pip install --quiet "${{ github.action_path }}"
+
+    - name: Audit
+      shell: bash
+      env:
+        BTA_PATH: ${{ inputs.path }}
+        BTA_STRICT: ${{ inputs.strict }}
+        BTA_HTML: ${{ inputs.html }}
+      run: |
+        set -uo pipefail
+        args=("$BTA_PATH" --no-color)
+        if [ "$BTA_STRICT" = "true" ]; then args+=(--strict); fi
+        if [ -n "$BTA_HTML" ]; then args+=(--html "$BTA_HTML"); fi
+
+        # Capture the status rather than letting a failing audit abort the
+        # step: the report has to reach the summary precisely when there are
+        # findings, which is the case where btaudit exits non-zero.
+        set +e
+        btaudit "${args[@]}" > "$RUNNER_TEMP/audit.txt" 2>&1
+        status=$?
+        set -e
+
+        cat "$RUNNER_TEMP/audit.txt"
+        {
+          echo '## Backtest audit'
+          echo '```'
+          cat "$RUNNER_TEMP/audit.txt"
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
+
+        exit "$status"
