@@ -63,11 +63,13 @@ exposure comparison, `fees` sharpens the cost check.
 
 | Check | Catches |
 |---|---|
+| **Trade log sanity** | Fills at a price or quantity of zero or less, exact duplicate fills that double count a position, and out-of-order timestamps. |
 | **Position awareness** | Fills that add to a position the run already held. Usually means the strategy can't see its own book — a position lookup returning nothing — so size and exposure are accidental. |
 | **Exit reachability** | Exits that only ever happen on the final bar. If the harness liquidated everything at the end, the run measured buy-and-hold, and any trailing stop or exit rule was never executed. |
 | **Short accounting** | Shorts opened and never covered. If the engine credits sale proceeds without booking the borrow as a liability, that cash is invented — enough to turn a losing strategy into a spectacular one. |
 | **Exposure comparability** | A book that's only partly deployed compared against a fully invested benchmark. Shallow drawdown is usually idle cash, not risk control. |
 | **Cost realism** | Round trips filling at an identical price with no fees. Frictions are what kill most high-turnover edges. |
+| **P&L reconciliation** | An equity curve that climbs far more than the closed trades realise — the headline resting on positions that were never closed. |
 | **Statistical significance** | Sharpe and win rate quoted on too few round trips to mean anything. |
 
 A check that can't be judged is reported as **unjudged**, never as a pass — a
