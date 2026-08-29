@@ -26,8 +26,11 @@ Exit code is `1` when anything blocking is found, so it drops straight into CI.
 
 ## Install
 
+Not on PyPI yet — the name `backtest-audit` there belongs to an unrelated
+project. Install from this repository:
+
 ```bash
-pip install backtest-audit
+pip install git+https://github.com/gr8monk3ys/backtest-audit
 ```
 
 ## Use
