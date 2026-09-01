@@ -1,0 +1,171 @@
+# Consumer smoke: does this working tree still work in the repos that gate on it?
+#
+# The repos that use backtest-audit pin it by git SHA and run it as a gate — a
+# check that changes verdict turns a green consumer red, or worse, turns a red
+# one green. Their own CI is mostly dead (private repos share an exhausted
+# Actions quota), so a regression here would surface nowhere. This repo is
+# public, where Actions minutes are free, so the check runs here: clone each
+# PUBLIC consumer, install its dependencies exactly as its own CI does, force
+# THIS working tree over the pinned SHA, and run the parts of the consumer's
+# suite that exercise the audit — plus the consumer's own audit gate over its
+# committed artifacts, which is the check that would actually flip.
+#
+# Private consumers are deliberately not in the matrix: `actions/checkout`
+# cannot read a private repo with the default GITHUB_TOKEN, and a cross-repo PAT
+# does not belong in a public repo's workflow. Only public consumers are listed.
+#
+# timeout-minutes is set from a measured run (16s on 2026-09-01), not guessed.
+
+name: Consumer smoke
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      consumer_ref:
+        description: "Consumer branch/tag/SHA to test against. Empty = the consumer's default branch."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  # consumer_ref is part of the key on purpose: dispatching an adoption branch
+  # must not cancel a run already testing the consumer's default branch.
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.consumer_ref || 'default' }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: ${{ matrix.repo }}@${{ inputs.consumer_ref || matrix.ref_default }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # A matrix row is a complete description of one consumer: where it
+          # lives, how IT installs (mirrored from its own CI, not invented
+          # here), and what IT calls a test run.
+          #
+          # Only the two files that exercise the audit are run, not the
+          # consumer's 1700-test suite: the rest is a trading stack this
+          # package has nothing to do with, and running it would buy minutes
+          # of noise. `--no-cov` because the consumer's pytest.ini carries a
+          # repo-wide coverage floor that a two-file selection cannot meet.
+          # `scripts/audit_results.py` is the interesting half — it is the
+          # consumer's gate over its committed backtests, and a changed
+          # verdict there is exactly the regression this workflow exists to
+          # catch.
+          - repo: gr8monk3ys/trading-bot
+            path: .
+            ref_default: main
+            python: "3.11"
+            install: uv
+            install_cmd: uv sync --frozen --group dev --group test
+            # .venv/bin/python, NOT `uv run`: `uv run` re-syncs the environment
+            # before running and would silently reinstall the SHA-pinned
+            # release over the working tree this job just forced in.
+            test_cmd: >-
+              env PAPER=True .venv/bin/python -m pytest
+              tests/unit/engine/test_backtest_audit_wiring.py
+              tests/unit/misc/test_audit_results_script.py
+              --no-cov -q -p no:cacheprovider
+              && env PAPER=True .venv/bin/python scripts/audit_results.py
+    env:
+      DEP_NAME: backtest-audit
+      IMPORT_NAME: backtest_audit
+      UV_PYTHON: ${{ matrix.python }}
+
+    steps:
+      - name: Check out the package under test
+        uses: actions/checkout@v4
+        with:
+          path: package
+
+      - name: Check out the consumer
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.repo }}
+          ref: ${{ inputs.consumer_ref || matrix.ref_default }}
+          path: consumer
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install uv
+        if: matrix.install == 'uv'
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Does this consumer ref declare the dependency?
+        id: declares
+        working-directory: consumer/${{ matrix.path }}
+        run: |
+          set -euo pipefail
+          declared=false
+          for f in pyproject.toml uv.lock poetry.lock requirements.txt requirements-dev.txt; do
+            [ -f "$f" ] || continue
+            if grep -qF "$DEP_NAME" "$f"; then
+              declared=true
+              echo "found '$DEP_NAME' in $f"
+              break
+            fi
+          done
+          echo "declared=$declared" >> "$GITHUB_OUTPUT"
+          if [ "$declared" = false ]; then
+            echo "::notice title=Consumer smoke skipped::${{ matrix.repo }}@${{ inputs.consumer_ref || matrix.ref_default }} does not declare '$DEP_NAME' — dependency not declared yet, skipped. This is the expected state until the adoption PR merges, and it is not a failure."
+          fi
+
+      - name: Install the consumer's dependencies
+        if: steps.declares.outputs.declared == 'true'
+        working-directory: consumer/${{ matrix.path }}
+        run: ${{ matrix.install_cmd }}
+
+      - name: Force this working tree over the pinned release
+        if: steps.declares.outputs.declared == 'true'
+        working-directory: consumer/${{ matrix.path }}
+        run: |
+          set -euo pipefail
+          # Editable on purpose: a wheel install lands in site-packages and is
+          # then indistinguishable by path from the SHA-pinned release, so the
+          # assertion below could not tell them apart.
+          # --no-deps on purpose: the consumer's own resolution stands, and
+          # exactly one distribution is swapped.
+          case "${{ matrix.install }}" in
+            uv)  uv pip install --python .venv/bin/python --force-reinstall --no-deps -e "$GITHUB_WORKSPACE/package" ;;
+            pip) pip install --force-reinstall --no-deps -e "$GITHUB_WORKSPACE/package" ;;
+            *)   echo "unknown install method '${{ matrix.install }}'" >&2; exit 1 ;;
+          esac
+
+      - name: Assert the consumer imports THIS tree, not the pinned release
+        if: steps.declares.outputs.declared == 'true'
+        working-directory: consumer/${{ matrix.path }}
+        run: |
+          set -euo pipefail
+          case "${{ matrix.install }}" in
+            uv)  PY=.venv/bin/python ;;
+            pip) PY=python ;;
+          esac
+          "$PY" - <<'PYCODE'
+          import importlib, os, sys
+
+          name = os.environ["IMPORT_NAME"]
+          path = os.path.realpath(importlib.import_module(name).__file__)
+          want = os.path.realpath(os.path.join(os.environ["GITHUB_WORKSPACE"], "package"))
+          print(f"{name}.__file__   = {path}")
+          print(f"must live under   = {want}")
+          if not path.startswith(want + os.sep):
+              sys.exit("FAIL: the consumer is importing the pinned release, not the package under test")
+          print("OK: the consumer is importing the package under test")
+          PYCODE
+
+      - name: Run the consumer's test suite
+        if: steps.declares.outputs.declared == 'true'
+        working-directory: consumer/${{ matrix.path }}
+        run: ${{ matrix.test_cmd }}
