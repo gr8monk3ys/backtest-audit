@@ -140,11 +140,11 @@ def load(path: str | Path) -> Backtest:
     """Load a backtest from JSON or CSV, tolerating common key spellings."""
     p = Path(path)
     if p.suffix.lower() == ".csv":
-        with p.open(newline="") as fh:
+        with p.open(newline="", encoding="utf-8") as fh:
             trades = trades_from_rows(csv.DictReader(fh))
         return Backtest(trades=trades, source=str(p))
 
-    raw = json.loads(p.read_text())
+    raw = json.loads(p.read_text(encoding="utf-8"))
     if isinstance(raw, list):
         return Backtest(trades=trades_from_rows(raw), source=str(p))
 
