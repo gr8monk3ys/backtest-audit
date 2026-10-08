@@ -17,7 +17,8 @@ def test_spaced_and_title_cased_headers(tmp_path):
     csv.write_text(
         "Date,Ticker,Action,Size,Fill Price,Commission\n"
         "2024-01-02,AAPL,BUY,100,185.50,1.00\n"
-        "2024-03-01,AAPL,SELL,100,192.00,1.50\n"
+        "2024-03-01,AAPL,SELL,100,192.00,1.50\n",
+        encoding="utf-8",
     )
     bt = load(csv)
     assert len(bt.trades) == 2
@@ -49,7 +50,7 @@ def test_bare_json_list_of_trades(tmp_path):
     p.write_text(json.dumps([
         {"symbol": "SPY", "side": "buy", "quantity": 1, "price": 100.0,
          "timestamp": "2024-01-02"},
-    ]))
+    ]), encoding="utf-8")
     assert len(load(p).trades) == 1
 
 

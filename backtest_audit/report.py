@@ -14,6 +14,13 @@ _MARK = {
     Severity.PASS: "✓",
     Severity.SKIPPED: "?",
 }
+# For consoles that cannot encode the marks above (cp1252 on Windows).
+_ASCII_MARK = {
+    Severity.BLOCKING: "x",
+    Severity.WARNING: "!",
+    Severity.PASS: "+",
+    Severity.SKIPPED: "?",
+}
 _ANSI = {
     Severity.BLOCKING: "\033[31m",
     Severity.WARNING: "\033[33m",
@@ -70,20 +77,24 @@ class Audit:
         }
 
 
-def render_text(audit: Audit, color: bool = True, verbose: bool = False) -> str:
+def render_text(
+    audit: Audit, color: bool = True, verbose: bool = False, unicode_marks: bool = True
+) -> str:
     def paint(sev: Severity, text: str) -> str:
         return f"{_ANSI[sev]}{text}{_RESET}" if color else text
 
+    marks = _MARK if unicode_marks else _ASCII_MARK
+    arrow = "→" if unicode_marks else "->"
     out = [f"\nbacktest-audit  {audit.source}", "=" * 72, ""]
     for f in audit.findings:
-        mark = paint(f.severity, _MARK[f.severity])
+        mark = paint(f.severity, marks[f.severity])
         out.append(f"  {mark} {f.title:<26} {f.summary}")
         if verbose or f.severity in (Severity.BLOCKING, Severity.WARNING):
             if f.detail:
                 for line in _wrap(f.detail, 66):
                     out.append(f"      {line}")
             if f.remedy:
-                out.append(f"      → {_wrap(f.remedy, 64)[0]}")
+                out.append(f"      {arrow} {_wrap(f.remedy, 64)[0]}")
                 for line in _wrap(f.remedy, 64)[1:]:
                     out.append(f"        {line}")
             out.append("")

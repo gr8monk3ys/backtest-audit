@@ -31,9 +31,38 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _stdout_can_encode(text: str) -> bool:
+    enc = getattr(sys.stdout, "encoding", None) or "utf-8"
+    try:
+        text.encode(enc)
+    except (UnicodeEncodeError, LookupError):
+        return False
+    return True
+
+
+def _make_stdout_safe() -> None:
+    """Never let a console encoding (cp1252 on Windows) turn a report into a crash."""
+    reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if reconfigure is None:
+        return
+    try:
+        reconfigure(errors="replace")
+    except (ValueError, OSError):
+        pass
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    try:
+        return _run(args)
+    except Exception as exc:
+        # Exit 1 means "blocking finding"; a crash must never be mistaken for one.
+        print(f"btaudit: internal error auditing {args.path}: "
+              f"{type(exc).__name__}: {exc}", file=sys.stderr)
+        return 2
 
+
+def _run(args: argparse.Namespace) -> int:
     try:
         result = audit_file(args.path)
     except (OSError, ValueError) as exc:
@@ -43,11 +72,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.as_json:
         print(json.dumps(result.to_dict(), indent=2, default=str))
     else:
+        _make_stdout_safe()
         color = not args.no_color and sys.stdout.isatty()
-        print(render_text(result, color=color, verbose=args.verbose))
+        unicode_marks = _stdout_can_encode("✓✗→")
+        print(render_text(result, color=color, verbose=args.verbose,
+                          unicode_marks=unicode_marks))
 
     if args.html:
-        Path(args.html).write_text(render_html(result))
+        Path(args.html).write_text(render_html(result), encoding="utf-8")
         if not args.as_json:
             print(f"  HTML report: {args.html}\n")
 
