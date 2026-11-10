@@ -32,6 +32,24 @@ class TestDataSanity:
         assert f.severity is Severity.BLOCKING
         assert f.evidence["non_positive_quantity"] == 1
 
+    @pytest.mark.parametrize("bad", [float("nan"), float("inf")])
+    def test_non_finite_price_is_blocking(self, bad):
+        # NaN <= 0 is False, so a NaN price used to pass as well-formed.
+        f = DataSanityCheck().run(Backtest(trades=[tr(), tr(price=bad)]))
+        assert f.severity is Severity.BLOCKING
+        assert f.evidence["non_positive_price"] == 1
+
+    def test_non_finite_quantity_is_blocking(self):
+        f = DataSanityCheck().run(Backtest(trades=[tr(), tr(qty=float("nan"))]))
+        assert f.severity is Severity.BLOCKING
+        assert f.evidence["non_positive_quantity"] == 1
+
+    def test_out_of_order_fills_warn(self):
+        bt = Backtest(trades=[tr(day=5), tr(day=2, price=101.0), tr(day=7, price=99.0)])
+        f = DataSanityCheck().run(bt)
+        assert f.severity is Severity.WARNING
+        assert f.evidence["chronological"] is False
+
     def test_exact_duplicate_fills_warn(self):
         dup = tr(day=5)
         bt = Backtest(trades=[dup, dup, tr(day=6), tr(day=7)])

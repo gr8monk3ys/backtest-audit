@@ -57,6 +57,9 @@ class Audit:
             return "NOT TRUSTWORTHY"
         if self.warnings:
             return "TRUSTWORTHY WITH CAVEATS"
+        if self.findings and len(self.skipped) == len(self.findings):
+            # Nothing was judged (an empty trade log): that is not a pass.
+            return "NOT JUDGED (no check could be evaluated)"
         if self.skipped:
             return "TRUSTWORTHY (some checks unjudged)"
         return "TRUSTWORTHY"

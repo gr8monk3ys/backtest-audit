@@ -31,6 +31,16 @@ def test_strict_mode_fails_on_warnings(capsys):
     assert main([str(OK), "--no-color", "--strict"]) == 1
 
 
+def test_empty_trade_log_is_not_called_trustworthy(tmp_path, capsys):
+    # Nothing judged is not a pass: every check is unjudged on an empty log.
+    p = tmp_path / "empty.csv"
+    p.write_text("timestamp,symbol,side,quantity,price\n", encoding="utf-8")
+    main([str(p), "--no-color"])
+    out = capsys.readouterr().out
+    assert "VERDICT: NOT JUDGED" in out
+    assert "VERDICT: TRUSTWORTHY" not in out
+
+
 def test_missing_file_exits_two_without_traceback(capsys):
     assert main(["does-not-exist.json"]) == 2
     assert "cannot audit" in capsys.readouterr().err

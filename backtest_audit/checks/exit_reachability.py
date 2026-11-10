@@ -37,7 +37,19 @@ class ExitReachabilityCheck:
             "final_bar": final,
         }
 
-        if share >= 0.9:
+        # The last exit in any log falls on its final bar by construction, so
+        # one close there is not evidence of a forced liquidation. If it is
+        # also the only close, there is nothing to tell the two cases apart.
+        if len(forced) == 1 and len(closes) == 1:
+            finding = skipped(
+                self.id, self.title,
+                "the log has a single exit, on its final bar, which could equally "
+                "be a strategy decision or an end-of-run liquidation",
+            )
+            finding.evidence = ev
+            return finding
+
+        if len(forced) > 1 and share >= 0.9:
             return Finding(
                 check_id=self.id, title=self.title, severity=Severity.BLOCKING,
                 summary=(
@@ -59,7 +71,7 @@ class ExitReachabilityCheck:
                 evidence=ev,
             )
 
-        if share >= 0.5:
+        if len(forced) > 1 and share >= 0.5:
             return Finding(
                 check_id=self.id, title=self.title, severity=Severity.WARNING,
                 summary=f"{share:.0%} of exits happen on the final bar",
