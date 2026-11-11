@@ -54,7 +54,7 @@ btaudit results.json --strict        # warnings fail too
 ### In CI
 
 ```yaml
-- uses: gr8monk3ys/backtest-audit@v0.1.0
+- uses: gr8monk3ys/backtest-audit@v1
   with:
     path: results/backtest.json
     strict: true          # optional: warnings fail too
