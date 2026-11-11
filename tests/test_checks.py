@@ -60,6 +60,52 @@ class TestExitReachability:
     def test_spread_out_exits_pass(self, clean_backtest):
         assert _run(ExitReachabilityCheck(), clean_backtest).severity is Severity.PASS
 
+    def test_single_round_trip_is_unjudged_not_blocking(self):
+        from datetime import datetime
+
+        from backtest_audit.models import Backtest, Trade
+        # One buy, one sell: the only exit is necessarily the last fill. That
+        # used to read as "100% of exits on the final bar" and block.
+        bt = Backtest(trades=[
+            Trade("SPY", "buy", 10, 100.0, datetime(2024, 1, 2)),
+            Trade("SPY", "sell", 10, 105.0, datetime(2024, 3, 10)),
+        ])
+        f = _run(ExitReachabilityCheck(), bt)
+        assert f.severity is Severity.SKIPPED
+        assert f.evidence["closes"] == 1
+
+    def test_last_exit_alone_on_final_bar_is_not_a_warning(self):
+        from datetime import datetime
+
+        from backtest_audit.models import Backtest, Trade
+        # Two round trips: the second exit is the last fill, which used to
+        # count as "50% of exits on the final bar".
+        bt = Backtest(trades=[
+            Trade("SPY", "buy", 10, 100.0, datetime(2024, 1, 2)),
+            Trade("SPY", "sell", 10, 105.0, datetime(2024, 1, 10)),
+            Trade("SPY", "buy", 10, 101.0, datetime(2024, 2, 2)),
+            Trade("SPY", "sell", 10, 103.0, datetime(2024, 2, 10)),
+        ])
+        assert _run(ExitReachabilityCheck(), bt).severity is Severity.PASS
+
+    def test_fractional_quantities_still_close(self):
+        from datetime import datetime
+
+        from backtest_audit.models import Backtest, Trade
+        # 0.1 + 0.2 - 0.3 is 5.6e-17 in floating point, not zero. The position
+        # is flat all the same, so this is one closed round trip, twice over.
+        bt = Backtest(trades=[
+            Trade("BTC", "buy", 0.1, 100.0, datetime(2024, 1, 2)),
+            Trade("BTC", "buy", 0.2, 100.0, datetime(2024, 1, 3)),
+            Trade("BTC", "sell", 0.3, 105.0, datetime(2024, 1, 10)),
+            Trade("BTC", "buy", 0.1, 100.0, datetime(2024, 2, 2)),
+            Trade("BTC", "sell", 0.1, 105.0, datetime(2024, 2, 10)),
+        ])
+        f = _run(ExitReachabilityCheck(), bt)
+        assert f.severity is Severity.PASS
+        assert f.evidence["closes"] == 2
+        assert _run(SignificanceCheck(), bt).evidence["round_trips"] == 2
+
 
 class TestShortLiability:
     def test_short_without_position_is_detected(self):
@@ -72,6 +118,33 @@ class TestShortLiability:
         f = _run(ShortLiabilityCheck(), bt)
         assert f.severity in (Severity.BLOCKING, Severity.WARNING)
         assert f.evidence["uncovered_short_symbols"] == ["IWM"]
+
+    def test_short_opened_by_selling_through_a_long_is_detected(self):
+        from datetime import datetime
+
+        from backtest_audit.models import Backtest, Trade
+        # Long 10, then sell 20: the book ends short 10 and is never covered.
+        # No fill opens a short from flat, which used to read as long-only.
+        bt = Backtest(trades=[
+            Trade("SPY", "buy", 10, 100.0, datetime(2024, 1, 2)),
+            Trade("SPY", "sell", 20, 105.0, datetime(2024, 1, 10)),
+        ])
+        f = _run(ShortLiabilityCheck(), bt)
+        assert f.severity is Severity.BLOCKING
+        assert f.evidence["uncovered_short_symbols"] == ["SPY"]
+        assert f.evidence["open_short_quantity"] == {"SPY": -10}
+
+    def test_covered_short_passes(self):
+        from datetime import datetime
+
+        from backtest_audit.models import Backtest, Trade
+        bt = Backtest(trades=[
+            Trade("IWM", "sell", 50, 200.0, datetime(2024, 1, 2)),
+            Trade("IWM", "buy", 50, 190.0, datetime(2024, 1, 10)),
+        ])
+        f = _run(ShortLiabilityCheck(), bt)
+        assert f.severity is Severity.PASS
+        assert f.evidence["short_entries"] == 1
 
     def test_long_only_run_passes(self, clean_backtest):
         assert _run(ShortLiabilityCheck(), clean_backtest).severity is Severity.PASS
@@ -88,6 +161,9 @@ class TestExposureMatch:
         f = _run(ExposureMatchCheck(), real_current_backtest)
         assert f.severity is Severity.WARNING
         assert f.evidence["avg_gross_exposure"] < 0.7
+
+    def test_fully_deployed_book_passes(self, clean_backtest):
+        assert _run(ExposureMatchCheck(), clean_backtest).severity is Severity.PASS
 
 
 class TestCostRealism:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections import Counter
 
 from backtest_audit.checks.base import Finding, Severity, skipped
@@ -15,8 +16,9 @@ class DataSanityCheck:
         if not bt.trades:
             return skipped(self.id, self.title, "the trade log is empty")
 
-        bad_price = [t for t in bt.trades if t.price <= 0]
-        bad_qty = [t for t in bt.trades if t.quantity <= 0]
+        # NaN and inf compare False against zero, so `<= 0` alone lets them through.
+        bad_price = [t for t in bt.trades if not (math.isfinite(t.price) and t.price > 0)]
+        bad_qty = [t for t in bt.trades if not (math.isfinite(t.quantity) and t.quantity > 0)]
 
         keys = Counter(
             (t.symbol, t.side, t.quantity, round(t.price, 8), t.timestamp) for t in bt.trades
@@ -38,9 +40,9 @@ class DataSanityCheck:
         if bad_price or bad_qty:
             parts = []
             if bad_price:
-                parts.append(f"{len(bad_price)} fill(s) at a price of zero or less")
+                parts.append(f"{len(bad_price)} fill(s) at a price of zero or less, or not a number")
             if bad_qty:
-                parts.append(f"{len(bad_qty)} fill(s) with zero or negative quantity")
+                parts.append(f"{len(bad_qty)} fill(s) with a quantity of zero or less, or not a number")
             return Finding(
                 check_id=self.id, title=self.title, severity=Severity.BLOCKING,
                 summary=" and ".join(parts),

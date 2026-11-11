@@ -10,19 +10,27 @@ defects that silently inflate results.
 ```console
 $ btaudit results.json
 
+  ✓ Trade log sanity           38 fills, all well-formed and in order
   ✗ Position awareness         18 of 38 fills (47%) added to a position the run
                                already held, across only 4 genuine entries
   ✓ Exit reachability          5 of 7 exits were strategy decisions
   ✗ Short accounting           3 short position(s) are never covered: EFA, IWM, SPY
   ? Exposure comparability     not enough information to judge — the artifact
                                reports no average gross exposure
-  ✓ Cost realism               fills show price dispersion — costs appear modelled
+  ✓ Cost realism               fills show price dispersion or explicit fees —
+                               costs appear modelled
+  ? P&L reconciliation         not enough information to judge — the artifact
+                               carries no equity curve
   ! Statistical significance   7 round trips is below the 50-trade bar
 
-  VERDICT: NOT TRUSTWORTHY  (2 blocking, 1 warning, 1 unjudged)
+  VERDICT: NOT TRUSTWORTHY  (2 blocking, 1 warning, 2 unjudged)
 ```
 
+(Abridged: the real output also prints an explanation and a remedy under each
+finding.)
+
 Exit code is `1` when anything blocking is found, so it drops straight into CI.
+A file that cannot be read or parsed exits `2`, never `1`.
 
 ## Install
 
@@ -46,7 +54,7 @@ btaudit results.json --strict        # warnings fail too
 ### In CI
 
 ```yaml
-- uses: gr8monk3ys/backtest-audit@v1
+- uses: gr8monk3ys/backtest-audit@v0.1.0
   with:
     path: results/backtest.json
     strict: true          # optional: warnings fail too
@@ -55,6 +63,8 @@ btaudit results.json --strict        # warnings fail too
 
 The run summary gets the full report, and the build fails on anything
 blocking.
+
+### As a library
 
 ```python
 from backtest_audit import audit_file
@@ -72,24 +82,25 @@ Anything with a trade log. Verified end to end against genuine
 names, no reshaping — and that export is committed as a regression fixture so
 the claim can't quietly rot.
 
-Anything with a trade log. JSON (`{"trades": [...]}` or a bare list) or CSV.
+JSON (`{"trades": [...]}` or a bare list) or CSV.
 Column names are matched loosely, so `Fill Price`, `fill_price` and `avg.price`
 all work, as do `BUY`/`long`/`1` for sides. The minimum is symbol, side,
 quantity, price, and a timestamp.
 
 Optional fields unlock extra checks: `exposure.avg_gross_exposure` enables the
-exposure comparison, `fees` sharpens the cost check.
+exposure comparison, `fees` sharpens the cost check, and an `equity_curve`
+plus per-trade `pnl` enable the P&L reconciliation.
 
 ## What it checks, and why each one matters
 
 | Check | Catches |
 |---|---|
-| **Trade log sanity** | Fills at a price or quantity of zero or less, exact duplicate fills that double count a position, and out-of-order timestamps. |
+| **Trade log sanity** | Fills at a price of zero or less (or not a number), zero-quantity fills, exact duplicate fills that double count a position, and out-of-order timestamps. A signed quantity is read as a size; the side column decides direction. |
 | **Position awareness** | Fills that add to a position the run already held. Usually means the strategy can't see its own book — a position lookup returning nothing — so size and exposure are accidental. |
-| **Exit reachability** | Exits that only ever happen on the final bar. If the harness liquidated everything at the end, the run measured buy-and-hold, and any trailing stop or exit rule was never executed. |
+| **Exit reachability** | Exits that only ever happen on the final bar — the date of the last fill in the log. If the harness liquidated everything at the end, the run measured buy-and-hold, and any trailing stop or exit rule was never executed. |
 | **Short accounting** | Shorts opened and never covered. If the engine credits sale proceeds without booking the borrow as a liability, that cash is invented — enough to turn a losing strategy into a spectacular one. |
 | **Exposure comparability** | A book that's only partly deployed compared against a fully invested benchmark. Shallow drawdown is usually idle cash, not risk control. |
-| **Cost realism** | Round trips filling at an identical price with no fees. Frictions are what kill most high-turnover edges. |
+| **Cost realism** | Same-day round trips filling at an identical price with no fees. Frictions are what kill most high-turnover edges. |
 | **P&L reconciliation** | An equity curve that climbs far more than the closed trades realise — the headline resting on positions that were never closed. |
 | **Statistical significance** | Sharpe and win rate quoted on too few round trips to mean anything. |
 

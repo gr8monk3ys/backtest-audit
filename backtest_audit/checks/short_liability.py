@@ -15,7 +15,9 @@ class ShortLiabilityCheck:
             return skipped(self.id, self.title, "the trade log is empty")
 
         events = replay(bt)
-        short_opens = [e for e in events if e.opens and e.after < 0]
+        # A short starts either from flat or by selling through a long; the
+        # second leaves the book just as short and must not read as long-only.
+        short_opens = [e for e in events if e.before >= 0 and e.after < 0]
         if not short_opens:
             return Finding(
                 check_id=self.id, title=self.title, severity=Severity.PASS,

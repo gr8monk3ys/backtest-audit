@@ -140,11 +140,13 @@ def load(path: str | Path) -> Backtest:
     """Load a backtest from JSON or CSV, tolerating common key spellings."""
     p = Path(path)
     if p.suffix.lower() == ".csv":
-        with p.open(newline="", encoding="utf-8") as fh:
+        # utf-8-sig: Excel's "CSV UTF-8" export starts with a byte-order mark,
+        # which would otherwise be glued onto the first column name.
+        with p.open(newline="", encoding="utf-8-sig") as fh:
             trades = trades_from_rows(csv.DictReader(fh))
         return Backtest(trades=trades, source=str(p))
 
-    raw = json.loads(p.read_text(encoding="utf-8"))
+    raw = json.loads(p.read_text(encoding="utf-8-sig"))
     if isinstance(raw, list):
         return Backtest(trades=trades_from_rows(raw), source=str(p))
 

@@ -13,6 +13,10 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from backtest_audit.models import Backtest, Trade
 
+# Fractional quantities (crypto, FX) do not sum back to exactly zero in binary
+# floating point: 0.1 + 0.2 - 0.3 leaves 5.6e-17. Anything this small is flat.
+_FLAT = 1e-9
+
 
 @dataclass
 class Event:
@@ -46,6 +50,8 @@ def replay(bt: Backtest) -> list[Event]:
     for tr in sorted(bt.trades, key=lambda x: x.timestamp):
         before = book.get(tr.symbol, 0.0)
         after = before + tr.signed_quantity
+        if abs(after) < _FLAT:
+            after = 0.0
         events.append(Event(trade=tr, before=before, after=after))
         book[tr.symbol] = after
     return events
@@ -55,4 +61,4 @@ def final_book(bt: Backtest) -> dict[str, float]:
     book: dict[str, float] = {}
     for tr in bt.trades:
         book[tr.symbol] = book.get(tr.symbol, 0.0) + tr.signed_quantity
-    return {k: v for k, v in book.items() if abs(v) > 1e-9}
+    return {k: v for k, v in book.items() if abs(v) >= _FLAT}

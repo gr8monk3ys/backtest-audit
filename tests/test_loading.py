@@ -28,6 +28,18 @@ def test_spaced_and_title_cased_headers(tmp_path):
     assert bt.trades[0].fees == 1.00
 
 
+def test_csv_with_a_byte_order_mark(tmp_path):
+    # Excel's "CSV UTF-8" export starts with a BOM; it used to be glued onto
+    # the first header, so the timestamp column was reported missing.
+    csv = tmp_path / "excel.csv"
+    csv.write_bytes(
+        b"\xef\xbb\xbftimestamp,symbol,side,quantity,price\n"
+        b"2024-01-02,SPY,buy,10,100\n"
+    )
+    bt = load(csv)
+    assert len(bt.trades) == 1 and bt.trades[0].date == "2024-01-02"
+
+
 def test_hyphenated_and_dotted_headers():
     rows = [{"trade-date": "2024-01-02", "symbol": "SPY", "side": "b",
              "qty": "10", "avg.price": "500.0"}]
