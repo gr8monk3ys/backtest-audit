@@ -30,6 +30,7 @@ $ btaudit results.json
 finding.)
 
 Exit code is `1` when anything blocking is found, so it drops straight into CI.
+An empty trade log also exits `1`: no check can run on it, so it is not a pass.
 A file that cannot be read or parsed exits `2`, never `1`.
 
 ## Install

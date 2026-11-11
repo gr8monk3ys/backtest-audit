@@ -85,6 +85,9 @@ def _run(args: argparse.Namespace) -> int:
 
     if result.blocking:
         return 1
+    if not result.judged:
+        # An empty log proves nothing; CI must not read it as a pass.
+        return 1
     if args.strict and result.warnings:
         return 1
     return 0

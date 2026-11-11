@@ -48,8 +48,14 @@ class Audit:
         return [f for f in self.findings if f.severity is Severity.SKIPPED]
 
     @property
+    def judged(self) -> bool:
+        """False when every check was skipped (an empty trade log)."""
+        return not (self.findings and len(self.skipped) == len(self.findings))
+
+    @property
     def trustworthy(self) -> bool:
-        return not self.blocking
+        # Nothing judged is not a pass, so it is not trustworthy either.
+        return not self.blocking and self.judged
 
     @property
     def verdict(self) -> str:
@@ -57,7 +63,7 @@ class Audit:
             return "NOT TRUSTWORTHY"
         if self.warnings:
             return "TRUSTWORTHY WITH CAVEATS"
-        if self.findings and len(self.skipped) == len(self.findings):
+        if not self.judged:
             # Nothing was judged (an empty trade log): that is not a pass.
             return "NOT JUDGED (no check could be evaluated)"
         if self.skipped:
